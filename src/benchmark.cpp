@@ -28,12 +28,12 @@ namespace uniform {
 	}
 	BENCHMARK(uniform_STL_lce_real)->Complexity();
 
-	static void Uniform_Random_real(benchmark::State& state) {
+	static void uniform_random_real(benchmark::State& state) {
 		random::uniform_distribution(random::get_seed());
 		for (auto _ : state)
 			auto val = random::uniform_distribution<double>(0, 1);
 	}
-	BENCHMARK(Uniform_Random_real)->Complexity();
+	BENCHMARK(uniform_random_real)->Complexity();
 
 	static void uniform_STL_mt19937_int(benchmark::State& state) {
 		std::mt19937 generator(random::get_seed());
