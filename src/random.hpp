@@ -9,29 +9,13 @@
 #include <type_traits>
 #include <vector>
 
-class random {
-private:
-	///<summary>Convert chars to <c>std::uint32_t</c> due to lack of the <c>constexpr</c> specifier in the <c>std::from_chars</c> function</summary>
-	///<returns>x * 10 + y for the representing "xy" string</returns>
-	static constexpr auto ConvertTimeFromString(const char* str, int offset) {
-		return static_cast<std::uint32_t>(str[offset] - '0') * 10 +
-			static_cast<std::uint32_t>(str[offset + 1] - '0');
-	}
-
-public:
+struct random {
 	///<summary>Get runtime seed from the <c>std::chrono::high_resolution_clock</c><summary>
 	///<returns>Seed in the range of [0, std::uint32_t_max]</returns>
 	static auto get_seed() {
 		return static_cast<std::uint32_t>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	}
-
-	///<summary>Get constexpr seed from the <c>__TIME__</c> macro<summary>
-	///<returns>Seed in the range of [0, 89940]</returns>
-	static constexpr auto get_seed_constexpr() {
-		auto t = __TIME__;
-		return ConvertTimeFromString(t, 0) * 60 * 60 + ConvertTimeFromString(t, 3) * 60 + ConvertTimeFromString(t, 6);
-	}
-
+	
 	///<summary>Real uniform distribution</summary>
 	///<returns>Uniform distributed value in the range of [0, 1]</returns>
 	static double uniform_distribution(std::uint32_t init = 0) {
@@ -151,6 +135,70 @@ public:
 	template <typename T, std::size_t size>
 	static void histogram(const std::array<T, size> &data, T min, T max, std::vector<double> &hist, std::size_t resolution = 0) {
 		histogram(data.data(), size, min, max, hist, resolution);
+	}
+};
+
+class random_cx {
+private:
+	///<summary>Convert chars to <c>std::uint32_t</c> due to lack of the <c>constexpr</c> specifier in the <c>std::from_chars</c> function</summary>
+	///<returns>x * 10 + y for the representing "xy" string</returns>
+	constexpr static auto time_from_string(const char* str, int offset) {
+		return static_cast<std::uint32_t>(str[offset] - '0') * 10 +
+			static_cast<std::uint32_t>(str[offset + 1] - '0');
+	}
+
+	constexpr static std::uint32_t lce_a = 4096;
+	constexpr static std::uint32_t lce_c = 150889;
+	constexpr static std::uint32_t lce_m = 714025;
+public:
+	///<summary>Get constexpr seed from the <c>__TIME__</c> macro<summary>
+	///<returns>Seed in the range of [0, 89940]</returns>
+	constexpr static auto get_seed_constexpr() {
+		auto t = __TIME__;
+		return time_from_string(t, 0) * 60 * 60 + time_from_string(t, 3) * 60 + time_from_string(t, 6);
+	}
+	
+	///<summary>Constexpr uniform distribution. Passing previous by reference due to the lack of static values in the constexpr context<summary>
+	///<returns>Uniformely distributed value in the range of [0, 714025]</returns>
+	constexpr static std::uint32_t uniform_distribution(std::uint32_t &previous) {
+		previous = ((lce_a * previous + lce_c) % lce_m);
+		return previous;
+	}
+
+	///<summary>Normalized constexpr uniform distribution. Passing previous by reference due to the lack of static values in the constexpr context<summary>
+	///<returns>Uniformely distributed value in the range of [0.0, 1.0]</returns>
+	constexpr static double uniform_distribution_n(std::uint32_t &previous) {
+		auto dst = uniform_distribution(previous);
+		return static_cast<double>(dst) / lce_m;
+	}
+
+	///<summary>Get std::array of uniformely distributed values<summary>
+	///<returns>std::array of uniformely distributed values in the range of [min, max]</returns>
+	template <typename T, std::size_t sz>
+	constexpr static auto uniform_distribution(T min, T max) {
+		std::array<T, sz> dst{};
+		auto previous = get_seed_constexpr();
+		for (auto &el : dst) 
+			el = static_cast<T>(uniform_distribution_n(previous) * (max - min) + min);
+		
+		return dst;
+	}
+
+	///<summary>Get std::array of normally distributed values. Normal distribution is being approximated by the Irwin-Hall distribution<summary>
+	///<returns>std::array of normally distributed values with mean = 0 and sigma = 1</returns>
+	template <typename T, std::size_t sz, std::size_t irwin_numbers = 12>
+	constexpr static auto normal_distribution(double mean, double sigma) {
+		std::array<T, sz> dst{};
+		auto previous = get_seed_constexpr();
+		for (auto &el : dst) {
+			double val = 0;
+			for (std::size_t i = 0; i < irwin_numbers; ++i)
+				val += uniform_distribution_n(previous);
+
+			el = val / (irwin_numbers / 12) - irwin_numbers / 2;
+		}
+
+		return dst;
 	}
 };
 
